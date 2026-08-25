@@ -3,11 +3,17 @@ export const GENRES = [
   'Hip-Hop',
   'R&B',
   'Rock',
+  'Hard Rock',
+  'Southern Rock',
+  'Metal',
   'Electronic',
   'Lo-fi',
   'Country',
   'Jazz',
+  'Gospel',
+  'Christian',
   'Ambient',
+  'Introspective',
   'Other',
 ] as const
 

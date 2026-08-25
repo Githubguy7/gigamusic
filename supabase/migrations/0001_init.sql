@@ -22,7 +22,10 @@ create table if not exists public.songs (
   title text not null check (char_length(trim(title)) > 0),
   artist_name text not null check (char_length(trim(artist_name)) > 0),
   genre text not null check (
-    genre in ('Pop', 'Hip-Hop', 'R&B', 'Rock', 'Electronic', 'Lo-fi', 'Country', 'Jazz', 'Ambient', 'Other')
+    genre in (
+      'Pop', 'Hip-Hop', 'R&B', 'Rock', 'Hard Rock', 'Southern Rock', 'Metal', 'Electronic',
+      'Lo-fi', 'Country', 'Jazz', 'Gospel', 'Christian', 'Ambient', 'Introspective', 'Other'
+    )
   ),
   lyrics text,
   audio_storage_path text not null,

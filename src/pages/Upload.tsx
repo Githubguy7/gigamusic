@@ -182,7 +182,7 @@ export function Upload() {
                   className={inputClass}
                 >
                   {GENRES.map((g) => (
-                    <option key={g} value={g}>
+                    <option key={g} value={g} style={{ backgroundColor: '#14102A', color: '#EDEBFF' }}>
                       {g}
                     </option>
                   ))}
