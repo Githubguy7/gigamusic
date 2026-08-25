@@ -1,0 +1,33 @@
+-- Schedules the nightly-backup Edge Function via pg_cron + pg_net.
+--
+-- Manual one-time setup required before this works (cannot be scripted —
+-- these values are project-specific secrets):
+--   1. Deploy the function:      supabase functions deploy nightly-backup
+--   2. Set its secrets:          supabase secrets set BACKUP_S3_ENDPOINT=... BACKUP_S3_BUCKET=...
+--                                 BACKUP_S3_ACCESS_KEY_ID=... BACKUP_S3_SECRET_ACCESS_KEY=...
+--   3. Store a service-role key this cron job can use to call the function,
+--      in Vault, then re-run the block below (or paste it into the SQL editor)
+--      with your project's function URL:
+--
+--        select vault.create_secret('<your-service-role-key>', 'backup_function_service_role_key');
+--
+--        select cron.schedule(
+--          'gigamusic-nightly-backup',
+--          '0 9 * * *', -- 09:00 UTC nightly; adjust to taste
+--          $$
+--          select net.http_post(
+--            url := 'https://<your-project-ref>.supabase.co/functions/v1/nightly-backup',
+--            headers := jsonb_build_object(
+--              'Content-Type', 'application/json',
+--              'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'backup_function_service_role_key')
+--            ),
+--            body := '{}'::jsonb
+--          );
+--          $$
+--        );
+--
+-- This migration only enables the required extensions so that block can be
+-- run safely once the project-specific values above are known.
+
+create extension if not exists pg_cron with schema extensions;
+create extension if not exists pg_net with schema extensions;
