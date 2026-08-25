@@ -6,6 +6,7 @@ import { fetchUserSongs } from '@/lib/queries'
 import { deleteSong, resolveAlbumId, updateSong, replaceSongAudio } from '@/lib/upload'
 import { exportEverything, type ExportProgress } from '@/lib/export'
 import { formatDuration } from '@/lib/format'
+import { getErrorMessage } from '@/lib/errors'
 import { GENRES } from '@/types'
 import type { SongWithAlbum } from '@/types'
 
@@ -60,7 +61,7 @@ export function Admin() {
       await deleteSong(song.id, song.audio_storage_path)
       setSongs((ss) => ss?.filter((s) => s.id !== song.id) ?? null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not delete this song.')
+      setError(getErrorMessage(e, 'Could not delete this song.'))
     }
   }
 
@@ -100,7 +101,7 @@ export function Admin() {
       setDraft(null)
       load()
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Could not save changes.')
+      setSaveError(getErrorMessage(e, 'Could not save changes.'))
     } finally {
       setSaving(false)
     }
@@ -113,7 +114,7 @@ export function Admin() {
       await exportEverything(setProgress)
       setExportState('done')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Export failed.')
+      setError(getErrorMessage(e, 'Export failed.'))
       setExportState('error')
     }
   }

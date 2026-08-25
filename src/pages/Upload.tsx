@@ -5,6 +5,7 @@ import { Upload as UploadIcon, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { validateAudioFile, readAudioDuration, resolveAlbumId, uploadSongFile } from '@/lib/upload'
+import { getErrorMessage } from '@/lib/errors'
 import { GENRES } from '@/types'
 
 interface Row {
@@ -72,10 +73,13 @@ export function Upload() {
 
     try {
       for (const row of valid) {
-        const [audio_storage_path, duration_seconds, album_id] = await Promise.all([
+        // Resolve the (small) album lookup before the (large) file upload so
+        // the two network requests aren't competing for bandwidth/connections
+        // at the same time — that contention was causing spurious failures.
+        const album_id = await resolveAlbumId(user.id, row.album)
+        const [audio_storage_path, duration_seconds] = await Promise.all([
           uploadSongFile(user.id, row.file),
           readAudioDuration(row.file),
-          resolveAlbumId(user.id, row.album),
         ])
         const { error: insertError } = await supabase.from('songs').insert({
           user_id: user.id,
@@ -91,7 +95,7 @@ export function Upload() {
       }
       navigate('/')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong publishing your songs.')
+      setError(getErrorMessage(e, 'Something went wrong publishing your songs.'))
     } finally {
       setPublishing(false)
     }
