@@ -67,3 +67,49 @@ export async function uploadSongFile(userId: string, file: File): Promise<string
   if (error) throw error
   return path
 }
+
+export interface SongEdits {
+  title: string
+  artist_name: string
+  album_id: string | null
+  genre: string
+  lyrics: string | null
+}
+
+/** Updates a song's metadata (title/artist/album/genre/lyrics) without touching its audio file. */
+export async function updateSong(songId: string, edits: SongEdits): Promise<void> {
+  const { error } = await supabase.from('songs').update(edits).eq('id', songId)
+  if (error) throw error
+}
+
+/**
+ * Replaces a song's audio file: uploads the new file to a fresh path, points
+ * the song row at it (and updates duration), then removes the old file.
+ * Uploading before removing means a failed upload never leaves the song
+ * pointing at nothing.
+ */
+export async function replaceSongAudio(
+  songId: string,
+  userId: string,
+  oldStoragePath: string,
+  newFile: File,
+): Promise<void> {
+  const invalid = validateAudioFile(newFile)
+  if (invalid) throw new Error(invalid)
+
+  const [newPath, duration_seconds] = await Promise.all([
+    uploadSongFile(userId, newFile),
+    readAudioDuration(newFile),
+  ])
+
+  const { error } = await supabase
+    .from('songs')
+    .update({ audio_storage_path: newPath, duration_seconds })
+    .eq('id', songId)
+  if (error) {
+    await supabase.storage.from(SONGS_BUCKET).remove([newPath])
+    throw error
+  }
+
+  await supabase.storage.from(SONGS_BUCKET).remove([oldStoragePath])
+}
