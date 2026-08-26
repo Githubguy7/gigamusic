@@ -23,11 +23,11 @@ interface ShootingStar {
 }
 
 function makeShootingStar(id: number): ShootingStar {
-  // Shallow, mostly-horizontal glide down-and-right — how a real meteor
-  // trail reads — rather than a steep drop. The trail's own tilt (below)
-  // is derived from this same angle so the streak always points the way
-  // it's actually travelling.
-  const angle = 10 + Math.random() * 16 // 10°-26° below horizontal
+  // A proper diagonal meteor angle — steep enough to read as travelling
+  // down-and-forward across the sky, not sliding sideways. The trail's own
+  // tilt (below) is derived from this same angle so the streak always
+  // points the way it's actually travelling.
+  const angle = 38 + Math.random() * 18 // 38°-56° below horizontal
   return {
     id,
     top: Math.random() * 45,
