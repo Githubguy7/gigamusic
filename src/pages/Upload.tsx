@@ -27,6 +27,7 @@ export function Upload() {
   const [mode, setMode] = useState<'single' | 'bulk'>('single')
   const [rows, setRows] = useState<Row[]>([])
   const [publishing, setPublishing] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -70,6 +71,7 @@ export function Upload() {
     if (valid.length === 0) return
     setPublishing(true)
     setError(null)
+    setProgress({ done: 0, total: valid.length })
 
     try {
       for (const row of valid) {
@@ -92,12 +94,18 @@ export function Upload() {
           duration_seconds,
         })
         if (insertError) throw insertError
+        // Drop the row as soon as it's published, so a failure partway
+        // through a big batch only leaves the not-yet-published rows behind
+        // — no risk of re-publishing the same song on retry.
+        setRows((rs) => rs.filter((r) => r.id !== row.id))
+        setProgress((p) => (p ? { ...p, done: p.done + 1 } : p))
       }
       navigate('/')
     } catch (e) {
       setError(getErrorMessage(e, 'Something went wrong publishing your songs.'))
     } finally {
       setPublishing(false)
+      setProgress(null)
     }
   }
 
@@ -214,8 +222,23 @@ export function Upload() {
             : 'cursor-not-allowed bg-white/[0.06] text-[#5C5980]'
         }`}
       >
-        {publishing ? 'Publishing…' : `Publish ${rows.length > 1 ? `${rows.length} songs` : 'song'}`}
+        {publishing
+          ? `Publishing ${progress ? `${progress.done} of ${progress.total}` : '…'}`
+          : `Publish ${rows.length > 1 ? `${rows.length} songs` : 'song'}`}
       </button>
+      {publishing && progress && (
+        <div className="mt-3">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-nebula-violet to-aurora-teal transition-[width]"
+              style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+            />
+          </div>
+          <p className="m-0 mt-1.5 text-center font-mono text-[11.5px] text-muted">
+            {progress.done} / {progress.total} published
+          </p>
+        </div>
+      )}
     </div>
   )
 }
