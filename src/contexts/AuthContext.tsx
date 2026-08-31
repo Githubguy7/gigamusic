@@ -9,6 +9,8 @@ interface AuthContextValue {
   loading: boolean
   isAdmin: boolean
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>
+  requestPasswordReset: (email: string) => Promise<{ error: string | null }>
+  updatePassword: (password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -39,9 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (alive) setLoading(false)
     })
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       setSession(newSession)
       await refreshAdmin(newSession)
+
+      if (event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/reset-password') {
+        window.location.replace('/reset-password')
+      }
     })
 
     return () => {
@@ -58,6 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin,
       signInWithPassword: async (email: string, password: string) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
+        return { error: error?.message ?? null }
+      },
+      requestPasswordReset: async (email: string) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        })
+        return { error: error?.message ?? null }
+      },
+      updatePassword: async (password: string) => {
+        const { error } = await supabase.auth.updateUser({ password })
         return { error: error?.message ?? null }
       },
       signOut: async () => {
