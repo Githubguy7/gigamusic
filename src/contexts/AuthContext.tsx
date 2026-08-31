@@ -7,7 +7,8 @@ interface AuthContextValue {
   user: User | null
   session: Session | null
   loading: boolean
-  signInWithMagicLink: (email: string) => Promise<{ error: string | null }>
+  isAdmin: boolean
+  signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -16,18 +17,37 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    let alive = true
+
+    const refreshAdmin = async (nextSession: Session | null) => {
+      if (!nextSession) {
+        if (alive) setIsAdmin(false)
+        return
+      }
+
+      const { data, error } = await supabase.rpc('is_gigamusic_admin')
+      if (alive) setIsAdmin(!error && data === true)
+    }
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!alive) return
       setSession(data.session)
-      setLoading(false)
+      await refreshAdmin(data.session)
+      if (alive) setLoading(false)
     })
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession)
+      await refreshAdmin(newSession)
     })
 
-    return () => subscription.subscription.unsubscribe()
+    return () => {
+      alive = false
+      subscription.subscription.unsubscribe()
+    }
   }, [])
 
   const value = useMemo<AuthContextValue>(
@@ -35,18 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       session,
       loading,
-      signInWithMagicLink: async (email: string) => {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { emailRedirectTo: window.location.origin },
-        })
+      isAdmin,
+      signInWithPassword: async (email: string, password: string) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
         return { error: error?.message ?? null }
       },
       signOut: async () => {
         await supabase.auth.signOut()
       },
     }),
-    [session, loading],
+    [session, loading, isAdmin],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
