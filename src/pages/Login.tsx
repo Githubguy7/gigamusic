@@ -5,10 +5,10 @@ import { LockKeyhole } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function Login() {
-  const { user, isAdmin, signInWithPassword, signOut } = useAuth()
+  const { user, isAdmin, signInWithPassword, requestPasswordReset, signOut } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [status, setStatus] = useState<'idle' | 'signing-in' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'signing-in' | 'resetting' | 'reset-sent' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
   if (user && isAdmin) return <Navigate to="/upload" replace />
@@ -27,6 +27,24 @@ export function Login() {
     }
 
     setStatus('idle')
+  }
+
+  const onForgotPassword = async () => {
+    if (!email.trim()) {
+      setErrorMsg('Enter your owner email first, then choose Forgot password.')
+      setStatus('error')
+      return
+    }
+
+    setStatus('resetting')
+    setErrorMsg(null)
+    const { error } = await requestPasswordReset(email.trim())
+    if (error) {
+      setErrorMsg(error)
+      setStatus('error')
+      return
+    }
+    setStatus('reset-sent')
   }
 
   if (user && !isAdmin) {
@@ -67,11 +85,22 @@ export function Login() {
         />
         <button
           type="submit"
-          disabled={status === 'signing-in'}
+          disabled={status === 'signing-in' || status === 'resetting'}
           className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-nebula-violet to-aurora-teal px-5 py-2.5 font-display text-sm font-bold text-[#0A0A18] disabled:opacity-50"
         >
           <LockKeyhole size={15} /> {status === 'signing-in' ? 'Signing in…' : 'Sign in'}
         </button>
+        <button
+          type="button"
+          onClick={() => void onForgotPassword()}
+          disabled={status === 'resetting'}
+          className="text-xs text-[#B9B2E6] underline-offset-4 hover:underline disabled:opacity-50"
+        >
+          {status === 'resetting' ? 'Sending reset email…' : 'Forgot password?'}
+        </button>
+        {status === 'reset-sent' && (
+          <p className="text-xs text-aurora-teal">Password reset email sent. Open the link to choose a new password.</p>
+        )}
         {status === 'error' && <p className="text-xs text-stardust-pink">{errorMsg}</p>}
       </form>
     </div>
