@@ -3,7 +3,7 @@ import type { ChangeEvent, DragEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload as UploadIcon, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { supabase } from '@/lib/supabase'
+import { supabase, SONGS_BUCKET } from '@/lib/supabase'
 import { validateAudioFile, readAudioDuration, resolveAlbumId, uploadSongFile } from '@/lib/upload'
 import { getErrorMessage } from '@/lib/errors'
 import { GENRES } from '@/types'
@@ -18,6 +18,12 @@ interface Row {
   lyrics: string
 }
 
+interface BatchResult {
+  success: number
+  failed: number
+  total: number
+}
+
 const inputClass =
   'rounded-lg border border-starlight/[0.14] bg-white/[0.03] px-2.5 py-2 text-[12.5px] text-starlight outline-none placeholder:text-[#7A7699]'
 
@@ -29,11 +35,14 @@ export function Upload() {
   const [publishing, setPublishing] = useState(false)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  const [result, setResult] = useState<BatchResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFiles = (fileList: FileList | null) => {
     if (!fileList) return
     setError(null)
+    setResult(null)
     const files = Array.from(fileList)
     for (const f of files) {
       const invalid = validateAudioFile(f)
@@ -56,9 +65,22 @@ export function Upload() {
 
   const updateRow = (id: string, field: keyof Omit<Row, 'id' | 'file'>, value: string) => {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
+    setRowErrors((current) => {
+      if (!current[id]) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
   }
 
-  const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id))
+  const removeRow = (id: string) => {
+    setRows((rs) => rs.filter((r) => r.id !== id))
+    setRowErrors((current) => {
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+  }
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -69,40 +91,70 @@ export function Upload() {
     if (!user) return
     const valid = rows.filter((r) => r.title.trim())
     if (valid.length === 0) return
+
     setPublishing(true)
     setError(null)
+    setResult(null)
+    setRowErrors({})
     setProgress({ done: 0, total: valid.length })
+
+    let success = 0
+    let failed = 0
+    let attempted = 0
 
     try {
       for (const row of valid) {
-        // Resolve the (small) album lookup before the (large) file upload so
-        // the two network requests aren't competing for bandwidth/connections
-        // at the same time — that contention was causing spurious failures.
-        const album_id = await resolveAlbumId(user.id, row.album)
-        const [audio_storage_path, duration_seconds] = await Promise.all([
-          uploadSongFile(user.id, row.file),
-          readAudioDuration(row.file),
-        ])
-        const { error: insertError } = await supabase.from('songs').insert({
-          user_id: user.id,
-          album_id,
-          title: row.title.trim(),
-          artist_name: row.artist.trim() || 'Unknown Artist',
-          genre: row.genre,
-          lyrics: row.lyrics.trim() || null,
-          audio_storage_path,
-          duration_seconds,
-        })
-        if (insertError) throw insertError
-        // Drop the row as soon as it's published, so a failure partway
-        // through a big batch only leaves the not-yet-published rows behind
-        // — no risk of re-publishing the same song on retry.
-        setRows((rs) => rs.filter((r) => r.id !== row.id))
-        setProgress((p) => (p ? { ...p, done: p.done + 1 } : p))
+        let uploadedPath: string | null = null
+
+        try {
+          const album_id = await resolveAlbumId(user.id, row.album)
+          const [audio_storage_path, duration_seconds] = await Promise.all([
+            uploadSongFile(user.id, row.file),
+            readAudioDuration(row.file),
+          ])
+          uploadedPath = audio_storage_path
+
+          const { error: insertError } = await supabase.from('songs').insert({
+            user_id: user.id,
+            album_id,
+            title: row.title.trim(),
+            artist_name: row.artist.trim() || 'Unknown Artist',
+            genre: row.genre,
+            lyrics: row.lyrics.trim() || null,
+            audio_storage_path,
+            duration_seconds,
+          })
+
+          if (insertError) {
+            await supabase.storage.from(SONGS_BUCKET).remove([audio_storage_path])
+            uploadedPath = null
+            throw insertError
+          }
+
+          success += 1
+          setRows((rs) => rs.filter((r) => r.id !== row.id))
+          setRowErrors((current) => {
+            const next = { ...current }
+            delete next[row.id]
+            return next
+          })
+        } catch (e) {
+          failed += 1
+          if (uploadedPath) {
+            await supabase.storage.from(SONGS_BUCKET).remove([uploadedPath]).catch(() => undefined)
+          }
+          const message = getErrorMessage(e, `Could not publish ${row.file.name}.`)
+          setRowErrors((current) => ({ ...current, [row.id]: message }))
+        } finally {
+          attempted += 1
+          setProgress({ done: attempted, total: valid.length })
+        }
       }
-      navigate('/')
+
+      setResult({ success, failed, total: valid.length })
+      if (failed === 0) navigate('/')
     } catch (e) {
-      setError(getErrorMessage(e, 'Something went wrong publishing your songs.'))
+      setError(getErrorMessage(e, 'Something unexpected interrupted the bulk upload.'))
     } finally {
       setPublishing(false)
       setProgress(null)
@@ -123,6 +175,9 @@ export function Upload() {
             onClick={() => {
               setMode(m)
               setRows([])
+              setRowErrors({})
+              setResult(null)
+              setError(null)
             }}
             className={`rounded-full border px-4 py-2 font-body text-[13px] capitalize ${
               mode === m
@@ -155,12 +210,21 @@ export function Upload() {
         />
       </div>
 
-      {error && <p className="mb-4 text-sm text-stardust-pink">{error}</p>}
+      {error && <p className="mb-4 rounded-lg border border-stardust-pink/25 bg-stardust-pink/10 p-3 text-sm text-stardust-pink">{error}</p>}
+
+      {result && result.failed > 0 && (
+        <div className="mb-4 rounded-lg border border-starlight/10 bg-white/[0.03] p-3 text-sm text-starlight">
+          <strong>{result.success} published</strong> · <span className="text-stardust-pink">{result.failed} failed</span>. The failed songs are still below with their errors. Fix anything needed, then choose Retry failed.
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="mb-5 flex flex-col gap-3">
           {rows.map((r) => (
-            <div key={r.id} className="rounded-xl border border-starlight/10 bg-white/[0.02] p-3.5">
+            <div
+              key={r.id}
+              className={`rounded-xl border p-3.5 ${rowErrors[r.id] ? 'border-stardust-pink/40 bg-stardust-pink/[0.04]' : 'border-starlight/10 bg-white/[0.02]'}`}
+            >
               <div className="mb-2 flex justify-between">
                 <span className="font-mono text-[11.5px] text-[#7A7699]">{r.file.name}</span>
                 {mode === 'bulk' && (
@@ -207,6 +271,11 @@ export function Upload() {
                 rows={2}
                 className={`${inputClass} w-full resize-y font-body`}
               />
+              {rowErrors[r.id] && (
+                <p className="m-0 mt-2 rounded-md bg-stardust-pink/10 px-2.5 py-2 text-xs text-stardust-pink">
+                  Failed: {rowErrors[r.id]}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -223,8 +292,10 @@ export function Upload() {
         }`}
       >
         {publishing
-          ? `Publishing ${progress ? `${progress.done} of ${progress.total}` : '…'}`
-          : `Publish ${rows.length > 1 ? `${rows.length} songs` : 'song'}`}
+          ? `Processing ${progress ? `${progress.done + 1} of ${progress.total}` : '…'}`
+          : result?.failed
+            ? `Retry failed (${rows.length})`
+            : `Publish ${rows.length > 1 ? `${rows.length} songs` : 'song'}`}
       </button>
       {publishing && progress && (
         <div className="mt-3">
@@ -235,7 +306,7 @@ export function Upload() {
             />
           </div>
           <p className="m-0 mt-1.5 text-center font-mono text-[11.5px] text-muted">
-            {progress.done} / {progress.total} published
+            {progress.done} / {progress.total} processed
           </p>
         </div>
       )}
