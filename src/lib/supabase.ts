@@ -1,13 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// GigaMusic's publishable browser credentials. Vite environment variables can
+// still override these for staging/alternate deployments.
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL || 'https://orkobwtacpjdferhzqtq.supabase.co'
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_iwNYOnqJerbxAh0gXpJHkQ_1ITKDq3v'
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy .env.example to .env.local and fill in your Supabase project credentials.',
-  )
+  throw new Error('Missing Supabase browser credentials.')
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)

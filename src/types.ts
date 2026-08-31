@@ -19,13 +19,6 @@ export const GENRES = [
 
 export type Genre = (typeof GENRES)[number]
 
-// NOTE: these are `type` aliases rather than `interface`s on purpose.
-// postgrest-js's generic inference for `.insert()`/`.update()`/`.select()`
-// pattern-matches against the Database['public']['Tables'][...] shapes, and
-// an `interface` there silently breaks that matching (every call collapses
-// to `never`) where a plain object `type` works — a known supabase-js
-// gotcha, and why `supabase gen types typescript` also emits `type`.
-
 export type Album = {
   id: string
   user_id: string
@@ -47,6 +40,13 @@ export type Song = {
   play_count: number
   download_count: number
   created_at: string
+  scripture_reference?: string | null
+  scripture_text?: string | null
+  song_meaning?: string | null
+  description?: string | null
+  artwork_url?: string | null
+  visualizer_theme?: string | null
+  is_published?: boolean
 }
 
 export type Comment = {
@@ -94,6 +94,13 @@ export type Database = {
           play_count?: number
           download_count?: number
           created_at?: string
+          scripture_reference?: string | null
+          scripture_text?: string | null
+          song_meaning?: string | null
+          description?: string | null
+          artwork_url?: string | null
+          visualizer_theme?: string | null
+          is_published?: boolean
         }
         Update: {
           id?: string
@@ -108,6 +115,13 @@ export type Database = {
           play_count?: number
           download_count?: number
           created_at?: string
+          scripture_reference?: string | null
+          scripture_text?: string | null
+          song_meaning?: string | null
+          description?: string | null
+          artwork_url?: string | null
+          visualizer_theme?: string | null
+          is_published?: boolean
         }
         Relationships: []
       }
@@ -136,11 +150,11 @@ export type Database = {
     Functions: {
       increment_play_count: { Args: { song_id: string }; Returns: void }
       increment_download_count: { Args: { song_id: string }; Returns: void }
+      is_gigamusic_admin: { Args: Record<string, never>; Returns: boolean }
     }
   }
 }
 
-/** A song joined with its album title, as returned by the browsing queries. */
 export type SongWithAlbum = Song & {
   album: Pick<Album, 'id' | 'title'> | null
   comment_count?: number
