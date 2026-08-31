@@ -7,6 +7,7 @@ import { Home } from '@/pages/Home'
 import { Album } from '@/pages/Album'
 import { Song } from '@/pages/Song'
 import { Login } from '@/pages/Login'
+import { ResetPassword } from '@/pages/ResetPassword'
 import { Upload } from '@/pages/Upload'
 import { Admin } from '@/pages/Admin'
 
@@ -21,6 +22,7 @@ function App() {
               <Route path="/album/:id" element={<Album />} />
               <Route path="/song/:id" element={<Song />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route
                 path="/upload"
                 element={
