@@ -20,12 +20,17 @@ interface Row {
 
 interface BatchResult {
   success: number
+  skipped: number
   failed: number
   total: number
 }
 
 const inputClass =
   'rounded-lg border border-starlight/[0.14] bg-white/[0.03] px-2.5 py-2 text-[12.5px] text-starlight outline-none placeholder:text-[#7A7699]'
+
+const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
+const rowArtist = (row: Row) => row.artist.trim() || 'Unknown Artist'
+const duplicateKey = (title: string, artist: string) => `${normalize(title)}::${normalize(artist)}`
 
 export function Upload() {
   const { user } = useAuth()
@@ -99,14 +104,33 @@ export function Upload() {
     setProgress({ done: 0, total: valid.length })
 
     let success = 0
+    let skipped = 0
     let failed = 0
     let attempted = 0
 
     try {
+      const { data: existingSongs, error: existingError } = await supabase
+        .from('songs')
+        .select('title, artist_name')
+        .eq('user_id', user.id)
+
+      if (existingError) throw existingError
+
+      const seen = new Set(
+        (existingSongs ?? []).map((song) => duplicateKey(song.title ?? '', song.artist_name ?? 'Unknown Artist')),
+      )
+
       for (const row of valid) {
         let uploadedPath: string | null = null
+        const key = duplicateKey(row.title, rowArtist(row))
 
         try {
+          if (seen.has(key)) {
+            skipped += 1
+            setRows((rs) => rs.filter((r) => r.id !== row.id))
+            continue
+          }
+
           const album_id = await resolveAlbumId(user.id, row.album)
           const [audio_storage_path, duration_seconds] = await Promise.all([
             uploadSongFile(user.id, row.file),
@@ -118,7 +142,7 @@ export function Upload() {
             user_id: user.id,
             album_id,
             title: row.title.trim(),
-            artist_name: row.artist.trim() || 'Unknown Artist',
+            artist_name: rowArtist(row),
             genre: row.genre,
             lyrics: row.lyrics.trim() || null,
             audio_storage_path,
@@ -131,6 +155,7 @@ export function Upload() {
             throw insertError
           }
 
+          seen.add(key)
           success += 1
           setRows((rs) => rs.filter((r) => r.id !== row.id))
           setRowErrors((current) => {
@@ -151,8 +176,8 @@ export function Upload() {
         }
       }
 
-      setResult({ success, failed, total: valid.length })
-      if (failed === 0) navigate('/')
+      setResult({ success, skipped, failed, total: valid.length })
+      if (failed === 0 && skipped === 0) navigate('/')
     } catch (e) {
       setError(getErrorMessage(e, 'Something unexpected interrupted the bulk upload.'))
     } finally {
@@ -212,9 +237,13 @@ export function Upload() {
 
       {error && <p className="mb-4 rounded-lg border border-stardust-pink/25 bg-stardust-pink/10 p-3 text-sm text-stardust-pink">{error}</p>}
 
-      {result && result.failed > 0 && (
+      {result && (result.failed > 0 || result.skipped > 0) && (
         <div className="mb-4 rounded-lg border border-starlight/10 bg-white/[0.03] p-3 text-sm text-starlight">
-          <strong>{result.success} published</strong> · <span className="text-stardust-pink">{result.failed} failed</span>. The failed songs are still below with their errors. Fix anything needed, then choose Retry failed.
+          <strong>{result.success} published</strong>
+          {result.skipped > 0 && <span> · <span className="text-aurora-teal">{result.skipped} duplicate{result.skipped === 1 ? '' : 's'} skipped</span></span>}
+          {result.failed > 0 && <span> · <span className="text-stardust-pink">{result.failed} failed</span></span>}.
+          {result.failed > 0 && ' The failed songs are still below with their errors. Fix anything needed, then choose Retry failed.'}
+          {result.failed === 0 && result.skipped > 0 && ' Existing songs were not uploaded again.'}
         </div>
       )}
 
@@ -292,7 +321,7 @@ export function Upload() {
         }`}
       >
         {publishing
-          ? `Processing ${progress ? `${progress.done + 1} of ${progress.total}` : '…'}`
+          ? `Processing ${progress ? `${Math.min(progress.done + 1, progress.total)} of ${progress.total}` : '…'}`
           : result?.failed
             ? `Retry failed (${rows.length})`
             : `Publish ${rows.length > 1 ? `${rows.length} songs` : 'song'}`}
