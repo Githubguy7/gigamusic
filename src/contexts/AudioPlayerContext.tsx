@@ -5,7 +5,8 @@ import type { Song } from '@/types'
 
 interface AudioPlayerContextValue {
   playingId: string | null
-  progress: number // 0-1 for the currently playing track
+  currentSong: Song | null
+  progress: number // 0-1 for the current track
   toggle: (song: Song) => void
   isPlaying: (songId: string) => boolean
 }
@@ -22,6 +23,7 @@ const RECOUNT_COOLDOWN_MS = 60_000
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [currentSong, setCurrentSong] = useState<Song | null>(null)
   const [progress, setProgress] = useState(0)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
@@ -30,7 +32,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const audio = new Audio()
     audioRef.current = audio
 
-    const onEnded = () => setPlayingId(null)
+    const onEnded = () => {
+      setPlayingId(null)
+      setProgress(1)
+    }
     const onTimeUpdate = () => {
       if (audio.duration > 0) setProgress(audio.currentTime / audio.duration)
     }
@@ -70,21 +75,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      audio.src = getPublicAudioUrl(song.audio_storage_path)
-      audio.currentTime = 0
+      const resumingCurrent = currentSong?.id === song.id && audio.src
+      if (!resumingCurrent) {
+        audio.src = getPublicAudioUrl(song.audio_storage_path)
+        audio.currentTime = 0
+        setProgress(0)
+      }
+
+      setCurrentSong(song)
       audio.play().catch(() => {})
       setPlayingId(song.id)
-      setProgress(0)
       scheduleCount(song.id)
     },
-    [playingId, scheduleCount],
+    [playingId, currentSong, scheduleCount],
   )
 
   const isPlaying = useCallback((songId: string) => playingId === songId, [playingId])
 
   const value = useMemo(
-    () => ({ playingId, progress, toggle, isPlaying }),
-    [playingId, progress, toggle, isPlaying],
+    () => ({ playingId, currentSong, progress, toggle, isPlaying }),
+    [playingId, currentSong, progress, toggle, isPlaying],
   )
 
   return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>
