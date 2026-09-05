@@ -1,4 +1,4 @@
-import { Cross, Pause, Play, Sparkles } from 'lucide-react'
+import { Cross, Pause, Play, RotateCcw, RotateCw, Sparkles } from 'lucide-react'
 import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
 
 function visualTheme(title: string, scripture?: string | null) {
@@ -11,13 +11,22 @@ function visualTheme(title: string, scripture?: string | null) {
   return 'Cross & Creation'
 }
 
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const whole = Math.floor(seconds)
+  const mins = Math.floor(whole / 60)
+  const secs = whole % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
 export function NowPlaying() {
-  const { currentSong, progress, toggle, isPlaying } = useAudioPlayer()
+  const { currentSong, progress, currentTime, duration, toggle, seek, seekToProgress, isPlaying } = useAudioPlayer()
   if (!currentSong) return null
 
   const playing = isPlaying(currentSong.id)
   const theme = currentSong.visualizer_theme || visualTheme(currentSong.title, currentSong.scripture_reference)
   const percent = Math.max(0, Math.min(100, progress * 100))
+  const displayDuration = duration || currentSong.duration_seconds || 0
 
   return (
     <section className="sticky bottom-4 z-40 mt-8 overflow-hidden rounded-[22px] border border-aurora-teal/25 bg-[rgba(7,8,24,0.92)] shadow-[0_20px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
@@ -54,14 +63,51 @@ export function NowPlaying() {
             </div>
           </div>
 
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-nebula-violet via-aurora-teal to-comet-gold transition-[width] duration-300"
-              style={{ width: `${percent}%` }}
-            />
+          <div className="mt-3 flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => seek(currentTime - 10)}
+              aria-label="Rewind 10 seconds"
+              title="Back 10 seconds"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-starlight/10 text-[#A9A3CC] hover:border-nebula-violet/40 hover:text-starlight"
+            >
+              <RotateCcw size={14} />
+            </button>
+
+            <div className="min-w-0 flex-1">
+              <input
+                type="range"
+                min="0"
+                max="1000"
+                step="1"
+                value={Math.round(progress * 1000)}
+                onChange={(e) => seekToProgress(Number(e.target.value) / 1000)}
+                aria-label="Song position"
+                className="h-2 w-full cursor-pointer accent-[#4FD8C4]"
+                style={{
+                  background: `linear-gradient(to right, #8B6FE8 0%, #4FD8C4 ${percent}%, rgba(255,255,255,0.08) ${percent}%, rgba(255,255,255,0.08) 100%)`,
+                  borderRadius: '9999px',
+                }}
+              />
+              <div className="mt-1 flex items-center justify-between font-mono text-[9.5px] tracking-[0.6px] text-[#777294]">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(displayDuration)}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => seek(currentTime + 10)}
+              aria-label="Fast forward 10 seconds"
+              title="Forward 10 seconds"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-starlight/10 text-[#A9A3CC] hover:border-nebula-violet/40 hover:text-starlight"
+            >
+              <RotateCw size={14} />
+            </button>
           </div>
-          <div className="mt-2 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[1.4px] text-[#777294]">
-            <span>{playing ? 'Light moving with the music' : 'Paused — your place is saved'}</span>
+
+          <div className="mt-1.5 flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[1.4px] text-[#777294]">
+            <span>{playing ? 'Drag the bar to move through the song' : 'Paused — drag to choose where to resume'}</span>
             <span>{Math.round(percent)}%</span>
           </div>
         </div>
