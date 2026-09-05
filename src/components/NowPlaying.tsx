@@ -1,4 +1,4 @@
-import { Cross, Pause, Play, RotateCcw, RotateCw, Sparkles } from 'lucide-react'
+import { Pause, Play, RotateCcw, RotateCw, Sparkles } from 'lucide-react'
 import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
 
 function visualTheme(title: string, scripture?: string | null) {
@@ -19,6 +19,27 @@ function formatTime(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+function ChristianCross() {
+  return (
+    <svg
+      viewBox="0 0 64 88"
+      width="58"
+      height="80"
+      aria-hidden="true"
+      className="relative z-10 overflow-visible drop-shadow-[0_0_18px_rgba(245,205,112,0.45)]"
+    >
+      <path
+        d="M27 4h10v23h18v10H37v47H27V37H9V27h18V4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.2"
+        strokeLinejoin="round"
+        className="text-comet-gold"
+      />
+    </svg>
+  )
+}
+
 export function NowPlaying() {
   const { currentSong, progress, currentTime, duration, toggle, seek, seekToProgress, isPlaying } = useAudioPlayer()
   if (!currentSong) return null
@@ -34,7 +55,7 @@ export function NowPlaying() {
         <div className="relative flex min-h-[112px] items-center justify-center overflow-hidden rounded-2xl border border-comet-gold/20 bg-[radial-gradient(circle_at_50%_40%,rgba(139,111,232,0.34),rgba(13,15,38,0.94)_66%)]">
           <div className={`absolute h-24 w-24 rounded-full border border-aurora-teal/20 ${playing ? 'animate-ping' : ''}`} />
           <div className={`absolute h-16 w-16 rounded-full bg-nebula-violet/20 blur-xl ${playing ? 'animate-pulse' : ''}`} />
-          <Cross size={56} strokeWidth={1.35} className="relative z-10 text-comet-gold drop-shadow-[0_0_18px_rgba(245,205,112,0.45)]" />
+          <ChristianCross />
           <Sparkles size={16} className="absolute right-3 top-3 text-aurora-teal" />
           <span className="absolute bottom-2.5 left-3 font-mono text-[9px] uppercase tracking-[1.7px] text-[#A9A3CC]">{theme}</span>
         </div>
