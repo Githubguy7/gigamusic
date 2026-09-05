@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, Upload, ShieldCheck, LogOut } from 'lucide-react'
 import { Starfield } from '@/components/Starfield'
+import { NowPlaying } from '@/components/NowPlaying'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -10,7 +11,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen bg-void font-body">
       <Starfield />
-      <div className="relative z-10 mx-auto max-w-[880px] px-6 pb-20 pt-10">
+      <div className="relative z-10 mx-auto max-w-[880px] px-6 pb-8 pt-10">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <Link to="/" className="inline-flex items-center gap-2 no-underline">
             <Sparkles size={18} className="text-comet-gold" />
@@ -50,6 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </nav>
         </header>
         {children}
+        <NowPlaying />
       </div>
     </div>
   )
