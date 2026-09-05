@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Headphones, Music2, Play, Search } from 'lucide-react'
 import { SongCard } from '@/components/SongCard'
 import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
