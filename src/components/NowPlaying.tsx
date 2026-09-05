@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward, Sparkles } from 'lucide-react'
+import { Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from 'lucide-react'
 import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
 
 type ThemeName = 'Grace & Mercy' | 'Heavenly Glory' | 'Holy Fire' | 'Light & Truth' | 'Living Water' | 'Cross & Creation'
@@ -85,7 +85,6 @@ export function NowPlaying() {
         <div className="relative flex min-h-[126px] items-center justify-center overflow-hidden rounded-2xl border border-comet-gold/20" style={{ background: themeBackground(theme) }}>
           <div className="absolute inset-0 opacity-55" style={{ backgroundImage: 'radial-gradient(circle at 15% 20%, rgba(255,255,255,.72) 0 1px, transparent 1.4px), radial-gradient(circle at 82% 28%, rgba(255,255,255,.52) 0 1px, transparent 1.4px), radial-gradient(circle at 70% 74%, rgba(79,216,196,.60) 0 1px, transparent 1.4px), radial-gradient(circle at 30% 82%, rgba(245,205,112,.55) 0 1px, transparent 1.4px)' }} />
           <ThemeVisual theme={theme} playing={playing} />
-          <Sparkles size={16} className="absolute right-3 top-3 text-aurora-teal" />
           <span className="absolute bottom-2.5 left-3 font-mono text-[9px] uppercase tracking-[1.7px] text-[#C8C2EA]">{theme}</span>
         </div>
 
