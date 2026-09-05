@@ -7,7 +7,11 @@ interface AudioPlayerContextValue {
   playingId: string | null
   currentSong: Song | null
   progress: number // 0-1 for the current track
+  currentTime: number
+  duration: number
   toggle: (song: Song) => void
+  seek: (seconds: number) => void
+  seekToProgress: (progress: number) => void
   isPlaying: (songId: string) => boolean
 }
 
@@ -25,26 +29,41 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [currentSong, setCurrentSong] = useState<Song | null>(null)
   const [progress, setProgress] = useState(0)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
     const audio = new Audio()
+    audio.preload = 'metadata'
     audioRef.current = audio
+
+    const syncTime = () => {
+      const nextDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
+      const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+      setDuration(nextDuration)
+      setCurrentTime(nextTime)
+      setProgress(nextDuration > 0 ? nextTime / nextDuration : 0)
+    }
 
     const onEnded = () => {
       setPlayingId(null)
-      setProgress(1)
+      syncTime()
     }
-    const onTimeUpdate = () => {
-      if (audio.duration > 0) setProgress(audio.currentTime / audio.duration)
-    }
+
+    audio.addEventListener('loadedmetadata', syncTime)
+    audio.addEventListener('durationchange', syncTime)
+    audio.addEventListener('timeupdate', syncTime)
+    audio.addEventListener('seeked', syncTime)
     audio.addEventListener('ended', onEnded)
-    audio.addEventListener('timeupdate', onTimeUpdate)
 
     return () => {
+      audio.removeEventListener('loadedmetadata', syncTime)
+      audio.removeEventListener('durationchange', syncTime)
+      audio.removeEventListener('timeupdate', syncTime)
+      audio.removeEventListener('seeked', syncTime)
       audio.removeEventListener('ended', onEnded)
-      audio.removeEventListener('timeupdate', onTimeUpdate)
       audio.pause()
     }
   }, [])
@@ -79,6 +98,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       if (!resumingCurrent) {
         audio.src = getPublicAudioUrl(song.audio_storage_path)
         audio.currentTime = 0
+        setCurrentTime(0)
+        setDuration(song.duration_seconds ?? 0)
         setProgress(0)
       }
 
@@ -90,11 +111,34 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     [playingId, currentSong, scheduleCount],
   )
 
+  const seek = useCallback((seconds: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration
+    if (!max) return
+    const next = Math.max(0, Math.min(max, seconds))
+    audio.currentTime = next
+    setCurrentTime(next)
+    setProgress(next / max)
+  }, [duration])
+
+  const seekToProgress = useCallback((nextProgress: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : duration
+    if (!max) return
+    const clamped = Math.max(0, Math.min(1, nextProgress))
+    const next = clamped * max
+    audio.currentTime = next
+    setCurrentTime(next)
+    setProgress(clamped)
+  }, [duration])
+
   const isPlaying = useCallback((songId: string) => playingId === songId, [playingId])
 
   const value = useMemo(
-    () => ({ playingId, currentSong, progress, toggle, isPlaying }),
-    [playingId, currentSong, progress, toggle, isPlaying],
+    () => ({ playingId, currentSong, progress, currentTime, duration, toggle, seek, seekToProgress, isPlaying }),
+    [playingId, currentSong, progress, currentTime, duration, toggle, seek, seekToProgress, isPlaying],
   )
 
   return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>
