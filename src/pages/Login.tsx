@@ -64,11 +64,12 @@ export function Login() {
       <h1 className="m-0 font-display text-2xl font-bold text-starlight">GigaMusic Owner</h1>
       <p className="mt-2 text-sm text-muted">Private administration sign-in.</p>
 
-      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-3">
+      <form onSubmit={onSubmit} autoComplete="off" className="mt-6 flex flex-col gap-3">
         <input
           type="email"
+          name="gigamusic-owner-email"
           required
-          autoComplete="username"
+          autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Owner email"
@@ -76,8 +77,9 @@ export function Login() {
         />
         <input
           type="password"
+          name="gigamusic-owner-secret"
           required
-          autoComplete="current-password"
+          autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
