@@ -12,7 +12,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase browser credentials.')
 }
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: window.sessionStorage,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
 
 export const SONGS_BUCKET = 'songs'
 export const COVERS_BUCKET = 'covers'
