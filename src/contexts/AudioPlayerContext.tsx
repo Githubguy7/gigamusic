@@ -10,6 +10,7 @@ interface AudioPlayerContextValue {
   currentTime: number
   duration: number
   autoplay: boolean
+  volume: number
   hasPrevious: boolean
   hasNext: boolean
   toggle: (song: Song) => void
@@ -19,6 +20,7 @@ interface AudioPlayerContextValue {
   playPrevious: () => void
   playNext: () => void
   setAutoplay: (enabled: boolean) => void
+  setVolume: (volume: number) => void
   isPlaying: (songId: string) => boolean
 }
 
@@ -39,6 +41,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [autoplay, setAutoplayState] = useState(true)
+  const [volume, setVolumeState] = useState(0.7)
 
   const setCurrentSong = useCallback((song: Song | null) => {
     currentSongRef.current = song
@@ -102,6 +105,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = new Audio()
     audio.preload = 'metadata'
+    audio.volume = 0.7
     audioRef.current = audio
 
     const syncTime = () => {
@@ -181,15 +185,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setAutoplayState(enabled)
   }, [])
 
+  const setVolume = useCallback((nextVolume: number) => {
+    const clamped = Math.max(0, Math.min(1, nextVolume))
+    if (audioRef.current) audioRef.current.volume = clamped
+    setVolumeState(clamped)
+  }, [])
+
   const currentIndex = currentSong ? playlistRef.current.findIndex((song) => song.id === currentSong.id) : -1
   const hasPrevious = playlistRef.current.length > 1 && currentIndex !== -1
   const hasNext = playlistRef.current.length > 1 && currentIndex !== -1
   const isPlaying = useCallback((songId: string) => playingId === songId, [playingId])
 
   const value = useMemo(() => ({
-    playingId, currentSong, progress, currentTime, duration, autoplay, hasPrevious, hasNext,
-    toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, isPlaying,
-  }), [playingId, currentSong, progress, currentTime, duration, autoplay, hasPrevious, hasNext, toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, isPlaying])
+    playingId, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext,
+    toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, setVolume, isPlaying,
+  }), [playingId, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext, toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, setVolume, isPlaying])
 
   return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>
 }
