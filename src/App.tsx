@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { Layout } from '@/components/Layout'
@@ -20,6 +20,8 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/album/:id" element={<Album />} />
+              <Route path="/song" element={<Navigate to="/" replace />} />
+              <Route path="/song/" element={<Navigate to="/" replace />} />
               <Route path="/song/:id" element={<Song />} />
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
@@ -39,6 +41,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
         </BrowserRouter>
