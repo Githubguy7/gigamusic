@@ -69,9 +69,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     setDuration(song.duration_seconds ?? 0)
     setProgress(0)
     setCurrentSong(song)
-    audio.play().catch(() => {})
-    setPlayingId(song.id)
-    scheduleCount(song.id)
+    audio.play().then(() => {
+      setPlayingId(song.id)
+      scheduleCount(song.id)
+    }).catch(() => setPlayingId(null))
   }, [scheduleCount, setCurrentSong])
 
   const findCurrentIndex = useCallback(() => {
@@ -104,7 +105,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const audio = new Audio()
-    audio.preload = 'metadata'
+    audio.preload = 'auto'
     audio.volume = 0.7
     audioRef.current = audio
 
@@ -120,18 +121,33 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       if (autoplayRef.current && playlistRef.current.length > 1) playNext()
       else setPlayingId(null)
     }
+    const onPlay = () => {
+      setPlayingId(currentSongRef.current?.id ?? null)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+    }
+    const onPause = () => {
+      if (!audio.ended) setPlayingId(null)
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
+    }
+    const onError = () => setPlayingId(null)
 
     audio.addEventListener('loadedmetadata', syncTime)
     audio.addEventListener('durationchange', syncTime)
     audio.addEventListener('timeupdate', syncTime)
     audio.addEventListener('seeked', syncTime)
     audio.addEventListener('ended', onEnded)
+    audio.addEventListener('play', onPlay)
+    audio.addEventListener('pause', onPause)
+    audio.addEventListener('error', onError)
     return () => {
       audio.removeEventListener('loadedmetadata', syncTime)
       audio.removeEventListener('durationchange', syncTime)
       audio.removeEventListener('timeupdate', syncTime)
       audio.removeEventListener('seeked', syncTime)
       audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('play', onPlay)
+      audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('error', onError)
       audio.pause()
     }
   }, [playNext])
@@ -147,9 +163,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     const resumingCurrent = currentSongRef.current?.id === song.id && audio.src
     if (resumingCurrent) {
-      audio.play().catch(() => {})
-      setPlayingId(song.id)
-      scheduleCount(song.id)
+      audio.play().then(() => {
+        setPlayingId(song.id)
+        scheduleCount(song.id)
+      }).catch(() => setPlayingId(null))
     } else startSong(song)
   }, [playingId, scheduleCount, startSong])
 
@@ -179,6 +196,35 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const setPlaylist = useCallback((songs: Song[]) => {
     playlistRef.current = songs
   }, [])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const audio = audioRef.current
+    if (!audio) return
+    if (currentSong) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentSong.title,
+        artist: currentSong.artist_name || 'GigaMusic',
+        album: 'GigaMusic',
+      })
+    }
+    const safePlay = () => audio.play().catch(() => setPlayingId(null))
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
+      ['play', safePlay], ['pause', () => audio.pause()],
+      ['previoustrack', playPrevious], ['nexttrack', playNext],
+      ['seekbackward', (d) => seek(audio.currentTime - (d.seekOffset || 10))],
+      ['seekforward', (d) => seek(audio.currentTime + (d.seekOffset || 10))],
+      ['seekto', (d) => { if (d.seekTime != null) seek(d.seekTime) }],
+    ]
+    for (const [action, handler] of handlers) {
+      try { navigator.mediaSession.setActionHandler(action, handler) } catch { /* unsupported action */ }
+    }
+    return () => {
+      for (const [action] of handlers) {
+        try { navigator.mediaSession.setActionHandler(action, null) } catch { /* unsupported action */ }
+      }
+    }
+  }, [currentSong, playNext, playPrevious, seek])
 
   const setAutoplay = useCallback((enabled: boolean) => {
     autoplayRef.current = enabled
