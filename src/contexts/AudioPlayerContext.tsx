@@ -33,6 +33,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const playlistRef = useRef<Song[]>([])
   const currentSongRef = useRef<Song | null>(null)
   const autoplayRef = useRef(true)
+  const playNextRef = useRef<() => void>(() => {})
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
   const [playingId, setPlayingId] = useState<string | null>(null)
@@ -64,6 +65,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current
     if (!audio) return
     audio.src = getPublicAudioUrl(song.audio_storage_path)
+    audio.load()
     audio.currentTime = 0
     setCurrentTime(0)
     setDuration(song.duration_seconds ?? 0)
@@ -87,6 +89,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const nextIndex = index >= 0 && index < list.length - 1 ? index + 1 : 0
     startSong(list[nextIndex])
   }, [findCurrentIndex, startSong])
+
+  useEffect(() => { playNextRef.current = playNext }, [playNext])
 
   const playPrevious = useCallback(() => {
     const list = playlistRef.current
@@ -118,7 +122,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     const onEnded = () => {
       syncTime()
-      if (autoplayRef.current && playlistRef.current.length > 1) playNext()
+      if (autoplayRef.current && playlistRef.current.length > 1) playNextRef.current()
       else setPlayingId(null)
     }
     const onPlay = () => {
@@ -150,7 +154,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('error', onError)
       audio.pause()
     }
-  }, [playNext])
+  }, [])
 
   const toggle = useCallback((song: Song) => {
     const audio = audioRef.current
