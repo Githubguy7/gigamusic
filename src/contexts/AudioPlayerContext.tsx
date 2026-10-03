@@ -108,9 +108,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [findCurrentIndex, startSong])
 
   useEffect(() => {
-    const audio = new Audio()
+    // Keep the media element attached to the document. Android/Chrome is more
+    // likely to preserve an attached media session when the screen locks than
+    // an Audio() object that only exists in JavaScript memory.
+    const audio = document.createElement('audio')
     audio.preload = 'auto'
     audio.volume = 0.7
+    audio.setAttribute('playsinline', '')
+    audio.setAttribute('data-gigamusic-player', 'true')
+    audio.style.display = 'none'
+    document.body.appendChild(audio)
     audioRef.current = audio
 
     const syncTime = () => {
@@ -153,6 +160,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('error', onError)
       audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+      audio.remove()
+      audioRef.current = null
     }
   }, [])
 
