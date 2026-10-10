@@ -216,13 +216,29 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     if (!('mediaSession' in navigator)) return
     const audio = audioRef.current
     if (!audio) return
-    if (currentSong) {
+    if (currentSong && typeof MediaMetadata !== 'undefined') {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist_name || 'GigaMusic',
         album: 'GigaMusic',
       })
     }
+    const updatePosition = () => {
+      if (!navigator.mediaSession.setPositionState) return
+      const duration = audio.duration
+      if (!Number.isFinite(duration) || duration <= 0) return
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: audio.playbackRate,
+          position: Math.max(0, Math.min(duration, audio.currentTime)),
+        })
+      } catch { /* Browser does not support this state */ }
+    }
+    audio.addEventListener('loadedmetadata', updatePosition)
+    audio.addEventListener('seeked', updatePosition)
+    audio.addEventListener('timeupdate', updatePosition)
+    updatePosition()
     const safePlay = () => audio.play().catch(() => setPlayingId(null))
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
       ['play', safePlay], ['pause', () => audio.pause()],
@@ -235,6 +251,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       try { navigator.mediaSession.setActionHandler(action, handler) } catch { /* unsupported action */ }
     }
     return () => {
+      audio.removeEventListener('loadedmetadata', updatePosition)
+      audio.removeEventListener('seeked', updatePosition)
+      audio.removeEventListener('timeupdate', updatePosition)
       for (const [action] of handlers) {
         try { navigator.mediaSession.setActionHandler(action, null) } catch { /* unsupported action */ }
       }
