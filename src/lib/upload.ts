@@ -51,10 +51,20 @@ export async function resolveAlbumId(userId: string, albumTitle: string): Promis
 }
 
 export async function deleteSong(songId: string, storagePath: string): Promise<void> {
-  const { error: storageError } = await supabase.storage.from(SONGS_BUCKET).remove([storagePath])
-  if (storageError) throw storageError
-  const { error: dbError } = await supabase.from('songs').delete().eq('id', songId)
+  // Delete the database record first. A failed storage cleanup can leave an
+  // orphaned file, but a failed database operation cannot break a live song.
+  const { data, error: dbError } = await supabase
+    .from('songs')
+    .delete()
+    .eq('id', songId)
+    .select('id')
   if (dbError) throw dbError
+  if (!data?.length) throw new Error('Song could not be deleted. Refresh and try again.')
+
+  const { error: storageError } = await supabase.storage.from(SONGS_BUCKET).remove([storagePath])
+  if (storageError) {
+    console.warn('[GigaMusic] Song deleted but storage cleanup failed', storageError)
+  }
 }
 
 export async function uploadSongFile(userId: string, file: File): Promise<string> {
