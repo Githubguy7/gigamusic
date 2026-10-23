@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { SongCard } from '@/components/SongCard'
-import { fetchSong } from '@/lib/queries'
+import { fetchSong, fetchSongs } from '@/lib/queries'
+import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
 import type { SongWithAlbum } from '@/types'
 
 const SITE_NAME = 'GigaMusic'
@@ -31,6 +32,7 @@ export function Song() {
   const { id } = useParams<{ id: string }>()
   const [song, setSong] = useState<SongWithAlbum | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  const { setPlaylist } = useAudioPlayer()
 
   useEffect(() => {
     if (!id) return
@@ -38,6 +40,12 @@ export function Song() {
       .then(setSong)
       .catch((e: Error) => setError(e.message))
   }, [id])
+
+  useEffect(() => {
+    fetchSongs().then(setPlaylist).catch((error: unknown) => {
+      console.warn('[GigaMusic] Unable to initialize playlist on song page', error)
+    })
+  }, [setPlaylist])
 
   useEffect(() => {
     if (!song) return
