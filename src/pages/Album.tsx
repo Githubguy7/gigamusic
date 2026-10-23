@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { SongCard } from '@/components/SongCard'
 import { fetchAlbum, fetchAlbumSongs } from '@/lib/queries'
+import { useAudioPlayer } from '@/contexts/AudioPlayerContext'
 import type { Album as AlbumType, SongWithAlbum } from '@/types'
 
 export function Album() {
@@ -10,6 +11,7 @@ export function Album() {
   const [album, setAlbum] = useState<AlbumType | null | undefined>(undefined)
   const [songs, setSongs] = useState<SongWithAlbum[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { setPlaylist } = useAudioPlayer()
 
   useEffect(() => {
     if (!id) return
@@ -17,9 +19,10 @@ export function Album() {
       .then(([a, s]) => {
         setAlbum(a)
         setSongs(s)
+        setPlaylist(s)
       })
       .catch((e: Error) => setError(e.message))
-  }, [id])
+  }, [id, setPlaylist])
 
   return (
     <>
