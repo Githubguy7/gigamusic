@@ -34,6 +34,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const currentSongRef = useRef<Song | null>(null)
   const autoplayRef = useRef(true)
   const playNextRef = useRef<() => void>(() => {})
+  const pendingBackgroundSongRef = useRef<Song | null>(null)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
   const [playingId, setPlayingId] = useState<string | null>(null)
@@ -64,18 +65,53 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const startSong = useCallback((song: Song) => {
     const audio = audioRef.current
     if (!audio) return
+    // Assigning src loads the resource; an explicit load() may interrupt
+    // background media-session continuity on Android Chrome.
+    pendingBackgroundSongRef.current = null
     audio.src = getPublicAudioUrl(song.audio_storage_path)
-    audio.load()
-    audio.currentTime = 0
     setCurrentTime(0)
     setDuration(song.duration_seconds ?? 0)
     setProgress(0)
     setCurrentSong(song)
     audio.play().then(() => {
+      pendingBackgroundSongRef.current = null
       setPlayingId(song.id)
       scheduleCount(song.id)
-    }).catch(() => setPlayingId(null))
+    }).catch((error: unknown) => {
+      console.warn('[GigaMusic] Track transition failed', { songId: song.id, hidden: document.hidden, error })
+      pendingBackgroundSongRef.current = document.hidden ? song : null
+      setPlayingId(null)
+    })
   }, [scheduleCount, setCurrentSong])
+
+  // Recover a blocked background transition after Chrome becomes visible.
+  // This does not claim to bypass Android autoplay or power restrictions.
+  useEffect(() => {
+    const retryWhenVisible = () => {
+      if (document.hidden) return
+      const audio = audioRef.current
+      if (!audio) return
+      if (audio.ended && autoplayRef.current && playlistRef.current.length > 1) {
+        playNextRef.current()
+        return
+      }
+      const pending = pendingBackgroundSongRef.current
+      if (!pending || currentSongRef.current?.id !== pending.id) return
+      pendingBackgroundSongRef.current = null
+      audio.play().then(() => {
+        setPlayingId(pending.id)
+        scheduleCount(pending.id)
+      }).catch((error: unknown) => {
+        console.warn('[GigaMusic] Foreground playback retry failed', error)
+      })
+    }
+    document.addEventListener('visibilitychange', retryWhenVisible)
+    window.addEventListener('pageshow', retryWhenVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', retryWhenVisible)
+      window.removeEventListener('pageshow', retryWhenVisible)
+    }
+  }, [scheduleCount])
 
   const findCurrentIndex = useCallback(() => {
     const id = currentSongRef.current?.id
