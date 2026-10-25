@@ -36,6 +36,8 @@ function draftFrom(song: SongWithAlbum): EditDraft {
 export function Admin() {
   const { user } = useAuth()
   const [songs, setSongs] = useState<SongWithAlbum[] | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [reviewOnly, setReviewOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [exportState, setExportState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [progress, setProgress] = useState<ExportProgress | null>(null)
@@ -107,6 +109,20 @@ export function Admin() {
     }
   }
 
+  // Flag likely catalog issues for review without modifying published metadata.
+  const needsMetadataReview = (song: SongWithAlbum) =>
+    !song.artist_name.trim() ||
+    song.artist_name.trim().toLowerCase() === 'unknown artist' ||
+    /\(\d+\)$|\.(mp3|wav|flac)$|_/.test(song.title)
+
+  const query = searchQuery.trim().toLocaleLowerCase()
+  const filteredSongs = songs?.filter((song) => {
+    if (reviewOnly && !needsMetadataReview(song)) return false
+    if (!query) return true
+    return [song.title, song.artist_name, song.album?.title ?? 'Singles', song.genre]
+      .some((value) => value.toLocaleLowerCase().includes(query))
+  })
+
   const handleExport = async () => {
     setExportState('running')
     setError(null)
@@ -153,8 +169,39 @@ export function Admin() {
             You haven't uploaded anything yet. <Link to="/upload">Upload a song</Link>.
           </p>
         )}
+        {songs !== null && songs.length > 0 && (
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="flex-1">
+              <span className="sr-only">Search your songs</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search title, artist, album or genre…"
+                className={`${inputClass} w-full`}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={reviewOnly}
+                onChange={(event) => setReviewOnly(event.target.checked)}
+                className="accent-comet-gold"
+              />
+              Needs metadata review
+            </label>
+            <span className="text-xs text-muted" aria-live="polite">
+              {filteredSongs?.length ?? 0} of {songs.length} songs
+            </span>
+          </div>
+        )}
+        {songs !== null && songs.length > 0 && filteredSongs?.length === 0 && (
+          <p className="text-sm text-muted">
+            No songs match these filters. Try another search or turn off metadata review.
+          </p>
+        )}
         <div className="flex flex-col gap-2">
-          {songs?.map((song) => {
+          {filteredSongs?.map((song) => {
             const isEditing = editingId === song.id
             return (
               <div key={song.id} className="rounded-xl border border-starlight/10 bg-white/[0.02] px-4 py-3">
