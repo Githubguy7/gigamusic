@@ -30,9 +30,34 @@ export function SongCard({ song, lyricsDefaultOpen = false, commentsDefaultOpen 
   const { toggle, isPlaying } = useAudioPlayer()
   const [showLyrics, setShowLyrics] = useState(lyricsDefaultOpen)
   const [showComments, setShowComments] = useState(commentsDefaultOpen)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const playing = isPlaying(song.id)
 
   const songUrl = `${window.location.origin}/song/${song.id}`
+
+  const handleShare = async () => {
+    setShareStatus(null)
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${song.title} by ${song.artist_name} | GigaMusic`,
+          text: `Listen to ${song.title} by ${song.artist_name} on GigaMusic.`,
+          url: songUrl,
+        })
+        return
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(songUrl)
+        setShareStatus('Song link copied!')
+      } else {
+        window.prompt('Copy this song link:', songUrl)
+      }
+    } catch (error) {
+      // Closing the Android share sheet is a normal cancellation.
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setShareStatus('Unable to share. Try the Facebook or X buttons.')
+    }
+  }
 
   const handleDownload = async () => {
     await supabase.rpc('increment_download_count', { song_id: song.id })
@@ -105,7 +130,15 @@ export function SongCard({ song, lyricsDefaultOpen = false, commentsDefaultOpen 
             <Download size={16} />
           </IconBtn>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label={`Share ${song.title}`}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-aurora-teal/30 bg-aurora-teal/10 px-3 text-xs font-semibold text-aurora-teal hover:bg-aurora-teal/20"
+          >
+            <Share2 size={14} /> Share song
+          </button>
           <IconLink href={shareUrl('x', song, songUrl)} target="_blank" rel="noreferrer" title="Share to X">
             <XIcon size={15} />
           </IconLink>
@@ -135,6 +168,8 @@ export function SongCard({ song, lyricsDefaultOpen = false, commentsDefaultOpen 
           </IconLink>
         </div>
       </div>
+
+      {shareStatus && <p role="status" className="mt-2 text-right text-xs text-aurora-teal">{shareStatus}</p>}
 
       {showLyrics && (
         <div className="mt-3.5 whitespace-pre-line rounded-xl border border-starlight/[0.08] bg-[rgba(6,7,20,0.5)] px-3.5 py-3 text-[13.5px] leading-[1.7] text-[#C9C2F0]">
