@@ -20,8 +20,8 @@ function xmlEscape(value: string) {
 export default async function handler(_req: unknown, res: any) {
   const { data: songs, error } = await supabase
     .from('songs')
-    .select('id, updated_at')
-    .order('updated_at', { ascending: false })
+    .select('id, created_at')
+    .order('created_at', { ascending: false })
 
   if (error) {
     console.error('Unable to build GigaMusic sitemap:', error)
@@ -35,7 +35,7 @@ export default async function handler(_req: unknown, res: any) {
     `  <url>\n    <loc>${SITE_URL}/</loc>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>`,
     ...(songs ?? []).map((song) => {
       const loc = xmlEscape(`${SITE_URL}/song/${song.id}`)
-      const lastmod = song.updated_at ? `\n    <lastmod>${xmlEscape(new Date(song.updated_at).toISOString())}</lastmod>` : ''
+      const lastmod = song.created_at ? `\n    <lastmod>${xmlEscape(new Date(song.created_at).toISOString())}</lastmod>` : ''
       return `  <url>\n    <loc>${loc}</loc>${lastmod}\n    <changefreq>monthly</changefreq>\n    <priority>0.8</priority>\n  </url>`
     }),
   ]
