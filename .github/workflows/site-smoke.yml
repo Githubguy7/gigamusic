@@ -1,0 +1,29 @@
+name: Public site SEO smoke check
+
+# Read-only checks on relevant PRs and after main deploys; manual reruns supported.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/check-public-seo.mjs
+      - .github/workflows/site-smoke.yml
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-public-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check homepage, robots, sitemap and first song link
+        run: node scripts/check-public-seo.mjs
