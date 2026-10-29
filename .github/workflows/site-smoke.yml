@@ -1,0 +1,22 @@
+name: Public site SEO smoke check
+
+# Run on demand after a production deployment. This does not change the site.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-public-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check homepage, robots, sitemap and first song link
+        run: node scripts/check-public-seo.mjs
