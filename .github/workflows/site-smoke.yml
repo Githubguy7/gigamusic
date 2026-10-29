@@ -1,7 +1,14 @@
 name: Public site SEO smoke check
 
-# Run on demand after a production deployment. This does not change the site.
+# Read-only checks on relevant PRs and after main deploys; manual reruns supported.
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/check-public-seo.mjs
+      - .github/workflows/site-smoke.yml
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
