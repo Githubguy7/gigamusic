@@ -1,0 +1,29 @@
+name: Public music catalog metadata audit
+
+# Read-only review of published-accessible metadata. Never modifies songs.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 15 * * 1'
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/audit-public-catalog.mjs
+      - .github/workflows/catalog-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit-public-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check audit script syntax
+        run: node --check scripts/audit-public-catalog.mjs
+      - name: Audit publicly readable song metadata
+        run: node scripts/audit-public-catalog.mjs
