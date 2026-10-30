@@ -57,9 +57,16 @@ const issues = new Map([
   ['Missing genre', []],
   ['Possible duplicate or typo', []],
 ])
+const flagged = new Set()
 function flag(category, song, note = '') {
+  const identifier = category + ':' + song.id
+  if (flagged.has(identifier)) return
+  flagged.add(identifier)
   const label = clean(song.title) + ' — ' + clean(song.artist_name)
   issues.get(category).push('[' + label + '](' + site + '/song/' + encodeURIComponent(song.id) + ')' + (note ? ' (' + note + ')' : ''))
+}
+function withoutVersion(title) {
+  return title.replace(/ (?:i|ii|iii|iv|v|vi|vii|viii|ix|x)$/i, '')
 }
 function audit(songs) {
   const byArtist = new Map()
@@ -82,6 +89,8 @@ function audit(songs) {
         const a = sorted[i], b = sorted[j]
         if (!a.title || !b.title || a.title.length < 12 || b.title.length < 12) continue
         if (a.title.slice(0, 6) !== b.title.slice(0, 6)) continue
+        // Numbered sequels/alternate mixes are not automatically typos.
+        if (a.title !== b.title && withoutVersion(a.title) === withoutVersion(b.title)) continue
         const d = distance(a.title, b.title)
         if (d <= 3) flag('Possible duplicate or typo', b.song,
           d === 0 ? 'same title as ' + clean(a.song.title) : 'similar to ' + clean(a.song.title))
