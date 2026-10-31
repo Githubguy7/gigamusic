@@ -33,10 +33,19 @@ export function Song() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!id) return
+    // Route changes can complete out of order on a slow mobile connection.
+    // Clear the previous song and ignore stale responses after navigation.
+    let active = true
+    setSong(undefined)
+    setError(null)
+    if (!id) {
+      setSong(null)
+      return () => { active = false }
+    }
     fetchSong(id)
-      .then(setSong)
-      .catch((e: Error) => setError(e.message))
+      .then((result) => { if (active) setSong(result) })
+      .catch((e: Error) => { if (active) setError(e.message) })
+    return () => { active = false }
   }, [id])
 
   useEffect(() => {
@@ -61,6 +70,10 @@ export function Song() {
     if (image) {
       upsertMeta('meta[property="og:image"]', { property: 'og:image', content: image })
       upsertMeta('meta[name="twitter:image"]', { name: 'twitter:image', content: image })
+    } else {
+      // Never carry artwork from the previous song into an artwork-free song.
+      document.head.querySelector('meta[property="og:image"]')?.remove()
+      document.head.querySelector('meta[name="twitter:image"]')?.remove()
     }
 
     const jsonLdId = 'gigamusic-song-jsonld'
@@ -84,8 +97,23 @@ export function Song() {
 
     return () => {
       document.getElementById(jsonLdId)?.remove()
-      document.title = 'GigaMusic — Christian Music for Worship, Reflection & Hope'
-      upsertCanonical(SITE_URL)
+      document.title = 'GigaMusic | Original Christian Music'
+      upsertCanonical(`${SITE_URL}/`)
+      const defaultTitle = 'GigaMusic — Christian Music in Stardust and Sound'
+      const defaultDescription = 'Discover and share faith-filled original Christian music on GigaMusic.'
+      upsertMeta('meta[name="description"]', {
+        name: 'description',
+        content: 'GigaMusic is a Christian music experience for discovering, listening to, and sharing faith-filled original songs.',
+      })
+      upsertMeta('meta[property="og:type"]', { property: 'og:type', content: 'website' })
+      upsertMeta('meta[property="og:url"]', { property: 'og:url', content: `${SITE_URL}/` })
+      upsertMeta('meta[property="og:title"]', { property: 'og:title', content: defaultTitle })
+      upsertMeta('meta[property="og:description"]', { property: 'og:description', content: defaultDescription })
+      upsertMeta('meta[name="twitter:card"]', { name: 'twitter:card', content: 'summary' })
+      upsertMeta('meta[name="twitter:title"]', { name: 'twitter:title', content: defaultTitle })
+      upsertMeta('meta[name="twitter:description"]', { name: 'twitter:description', content: defaultDescription })
+      document.head.querySelector('meta[property="og:image"]')?.remove()
+      document.head.querySelector('meta[name="twitter:image"]')?.remove()
     }
   }, [song])
 
