@@ -38,6 +38,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const playNextRef = useRef<() => void>(() => {})
   const pendingBackgroundSongRef = useRef<Song | null>(null)
   const playRequestRef = useRef(0)
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stalledAtRef = useRef<number | null>(null)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
   const [playingId, setPlayingId] = useState<string | null>(null)
@@ -135,6 +137,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         playNextRef.current()
         return
       }
+      // Android can suspend a media stream without dispatching an error or
+      // rejecting play(). Offer a manual recovery after a prolonged stall.
+      if (stalledAtRef.current !== null && Date.now() - stalledAtRef.current >= 12_000 && !audio.paused && !audio.ended) {
+        setPlaybackError('Playback appears stuck. Tap Resume or Next to continue.')
+      }
       const pending = pendingBackgroundSongRef.current
       if (!pending || currentSongRef.current?.id !== pending.id) return
       pendingBackgroundSongRef.current = null
@@ -199,6 +206,29 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     document.body.appendChild(audio)
     audioRef.current = audio
 
+    const clearStall = () => {
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+      stallTimerRef.current = null
+      stalledAtRef.current = null
+    }
+    const onBuffering = (event: Event) => {
+      if (audio.paused || audio.ended) return
+      if (stalledAtRef.current === null) stalledAtRef.current = Date.now()
+      console.warn('[GigaMusic] Audio buffering', {
+        event: event.type, songId: currentSongRef.current?.id,
+        hidden: document.hidden, readyState: audio.readyState, networkState: audio.networkState,
+      })
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+      stallTimerRef.current = setTimeout(() => {
+        if (audio.paused || audio.ended || audio.readyState >= 3) return
+        setPlaybackError('Playback appears stuck. Tap Resume or Next to continue.')
+      }, 12_000)
+    }
+    const onPlaying = () => {
+      clearStall()
+      setPlaybackError(null)
+    }
+
     const syncTime = () => {
       const nextDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
       const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
@@ -217,6 +247,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
     }
     const onPause = () => {
+      clearStall()
       if (!audio.ended) setPlayingId(null)
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
     }
@@ -229,6 +260,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       })
     }
 
+    audio.addEventListener('waiting', onBuffering)
+    audio.addEventListener('stalled', onBuffering)
+    audio.addEventListener('playing', onPlaying)
     audio.addEventListener('loadedmetadata', syncTime)
     audio.addEventListener('durationchange', syncTime)
     audio.addEventListener('timeupdate', syncTime)
@@ -238,6 +272,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     audio.addEventListener('pause', onPause)
     audio.addEventListener('error', onError)
     return () => {
+      clearStall()
+      audio.removeEventListener('waiting', onBuffering)
+      audio.removeEventListener('stalled', onBuffering)
+      audio.removeEventListener('playing', onPlaying)
       audio.removeEventListener('loadedmetadata', syncTime)
       audio.removeEventListener('durationchange', syncTime)
       audio.removeEventListener('timeupdate', syncTime)
