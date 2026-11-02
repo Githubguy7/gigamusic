@@ -5,6 +5,8 @@ import type { Song } from '@/types'
 
 interface AudioPlayerContextValue {
   playingId: string | null
+  playbackError: string | null
+  retryPlayback: () => void
   currentSong: Song | null
   progress: number
   currentTime: number
@@ -34,9 +36,14 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const currentSongRef = useRef<Song | null>(null)
   const autoplayRef = useRef(true)
   const playNextRef = useRef<() => void>(() => {})
+  const pendingBackgroundSongRef = useRef<Song | null>(null)
+  const playRequestRef = useRef(0)
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stalledAtRef = useRef<number | null>(null)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCountedAtRef = useRef<Map<string, number>>(new Map())
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [playbackError, setPlaybackError] = useState<string | null>(null)
   const [currentSong, setCurrentSongState] = useState<Song | null>(null)
   const [progress, setProgress] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
@@ -64,18 +71,103 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const startSong = useCallback((song: Song) => {
     const audio = audioRef.current
     if (!audio) return
+    const request = ++playRequestRef.current
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+    stallTimerRef.current = null
+    stalledAtRef.current = null
+    pendingBackgroundSongRef.current = null
+    setPlaybackError(null)
+    setPlayingId(null)
+    // Assigning src loads the resource; an explicit load() can interrupt
+    // Android Chrome's background media session at a track boundary.
     audio.src = getPublicAudioUrl(song.audio_storage_path)
-    audio.load()
-    audio.currentTime = 0
     setCurrentTime(0)
     setDuration(song.duration_seconds ?? 0)
     setProgress(0)
     setCurrentSong(song)
     audio.play().then(() => {
+      if (request !== playRequestRef.current) return
+      pendingBackgroundSongRef.current = null
       setPlayingId(song.id)
       scheduleCount(song.id)
-    }).catch(() => setPlayingId(null))
+    }).catch((error: unknown) => {
+      if (request !== playRequestRef.current) return
+      const name = error instanceof Error ? error.name : 'Unknown'
+      console.warn('[GigaMusic] Track playback failed', { songId: song.id, hidden: document.hidden, name })
+      pendingBackgroundSongRef.current = document.hidden ? song : null
+      setPlayingId(null)
+      setPlaybackError(name === 'NotAllowedError'
+        ? 'Playback was blocked by the browser. Tap Resume to continue.'
+        : 'Playback was interrupted. Tap Resume or choose another song.')
+    })
   }, [scheduleCount, setCurrentSong])
+
+  // A user-initiated recovery action is essential when Chrome rejects
+  // background autoplay. Never loop indefinitely on a rejected play().
+  const retryPlayback = useCallback(() => {
+    const audio = audioRef.current
+    const song = currentSongRef.current
+    if (!audio || !song) return
+    if (!audio.src || audio.error) {
+      startSong(song)
+      return
+    }
+    const request = ++playRequestRef.current
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+    stallTimerRef.current = null
+    stalledAtRef.current = null
+    pendingBackgroundSongRef.current = null
+    setPlaybackError(null)
+    audio.play().then(() => {
+      if (request !== playRequestRef.current) return
+      setPlayingId(song.id)
+      scheduleCount(song.id)
+    }).catch((error: unknown) => {
+      if (request !== playRequestRef.current) return
+      console.warn('[GigaMusic] Manual resume failed', {
+        songId: song.id, name: error instanceof Error ? error.name : 'Unknown',
+      })
+      setPlayingId(null)
+      setPlaybackError('Playback could not resume. Try Next or reopen the page.')
+    })
+  }, [scheduleCount, startSong])
+
+  // Recover a blocked background transition after Chrome becomes visible.
+  // This does not claim to bypass Android autoplay or power restrictions.
+  useEffect(() => {
+    const retryWhenVisible = () => {
+      if (document.hidden) return
+      const audio = audioRef.current
+      if (!audio) return
+      if (audio.ended && autoplayRef.current && playlistRef.current.length > 1) {
+        playNextRef.current()
+        return
+      }
+      // Android can suspend a media stream without dispatching an error or
+      // rejecting play(). Offer a manual recovery after a prolonged stall.
+      if (stalledAtRef.current !== null && Date.now() - stalledAtRef.current >= 12_000 && !audio.paused && !audio.ended) {
+        setPlaybackError('Playback appears stuck. Tap Resume or Next to continue.')
+      }
+      const pending = pendingBackgroundSongRef.current
+      if (!pending || currentSongRef.current?.id !== pending.id) return
+      pendingBackgroundSongRef.current = null
+      audio.play().then(() => {
+        setPlayingId(pending.id)
+        scheduleCount(pending.id)
+      }).catch((error: unknown) => {
+        console.warn('[GigaMusic] Foreground playback retry failed', {
+          songId: pending.id, name: error instanceof Error ? error.name : 'Unknown',
+        })
+        setPlaybackError('Playback was interrupted. Tap Resume to continue.')
+      })
+    }
+    document.addEventListener('visibilitychange', retryWhenVisible)
+    window.addEventListener('pageshow', retryWhenVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', retryWhenVisible)
+      window.removeEventListener('pageshow', retryWhenVisible)
+    }
+  }, [scheduleCount])
 
   const findCurrentIndex = useCallback(() => {
     const id = currentSongRef.current?.id
@@ -120,6 +212,29 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     document.body.appendChild(audio)
     audioRef.current = audio
 
+    const clearStall = () => {
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+      stallTimerRef.current = null
+      stalledAtRef.current = null
+    }
+    const onBuffering = (event: Event) => {
+      if (audio.paused || audio.ended) return
+      if (stalledAtRef.current === null) stalledAtRef.current = Date.now()
+      console.warn('[GigaMusic] Audio buffering', {
+        event: event.type, songId: currentSongRef.current?.id,
+        hidden: document.hidden, readyState: audio.readyState, networkState: audio.networkState,
+      })
+      if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+      stallTimerRef.current = setTimeout(() => {
+        if (audio.paused || audio.ended || audio.readyState >= 3) return
+        setPlaybackError('Playback appears stuck. Tap Resume or Next to continue.')
+      }, 12_000)
+    }
+    const onPlaying = () => {
+      clearStall()
+      setPlaybackError(null)
+    }
+
     const syncTime = () => {
       const nextDuration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0
       const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
@@ -134,14 +249,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     const onPlay = () => {
       setPlayingId(currentSongRef.current?.id ?? null)
+      setPlaybackError(null)
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
     }
     const onPause = () => {
+      clearStall()
       if (!audio.ended) setPlayingId(null)
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
     }
-    const onError = () => setPlayingId(null)
+    const onError = () => {
+      setPlayingId(null)
+      setPlaybackError('This song could not be loaded. Tap Resume or skip to another song.')
+      console.warn('[GigaMusic] Audio element error', {
+        songId: currentSongRef.current?.id, mediaErrorCode: audio.error?.code,
+        hidden: document.hidden, readyState: audio.readyState, networkState: audio.networkState,
+      })
+    }
 
+    audio.addEventListener('waiting', onBuffering)
+    audio.addEventListener('stalled', onBuffering)
+    audio.addEventListener('playing', onPlaying)
     audio.addEventListener('loadedmetadata', syncTime)
     audio.addEventListener('durationchange', syncTime)
     audio.addEventListener('timeupdate', syncTime)
@@ -151,6 +278,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     audio.addEventListener('pause', onPause)
     audio.addEventListener('error', onError)
     return () => {
+      clearStall()
+      audio.removeEventListener('waiting', onBuffering)
+      audio.removeEventListener('stalled', onBuffering)
+      audio.removeEventListener('playing', onPlaying)
       audio.removeEventListener('loadedmetadata', syncTime)
       audio.removeEventListener('durationchange', syncTime)
       audio.removeEventListener('timeupdate', syncTime)
@@ -170,20 +301,19 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback((song: Song) => {
     const audio = audioRef.current
     if (!audio) return
-    if (playingId === song.id) {
+    const isCurrent = currentSongRef.current?.id === song.id
+    // Inspect the real media element rather than possibly stale React state
+    // after the phone wakes from a background playback interruption.
+    if (isCurrent && !audio.paused) {
+      ++playRequestRef.current
       audio.pause()
       setPlayingId(null)
       if (countTimerRef.current) clearTimeout(countTimerRef.current)
       return
     }
-    const resumingCurrent = currentSongRef.current?.id === song.id && audio.src
-    if (resumingCurrent) {
-      audio.play().then(() => {
-        setPlayingId(song.id)
-        scheduleCount(song.id)
-      }).catch(() => setPlayingId(null))
-    } else startSong(song)
-  }, [playingId, scheduleCount, startSong])
+    if (isCurrent) retryPlayback()
+    else startSong(song)
+  }, [retryPlayback, startSong])
 
   const seek = useCallback((seconds: number) => {
     const audio = audioRef.current
@@ -239,7 +369,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     audio.addEventListener('seeked', updatePosition)
     audio.addEventListener('timeupdate', updatePosition)
     updatePosition()
-    const safePlay = () => audio.play().catch(() => setPlayingId(null))
+    const safePlay = () => retryPlayback()
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler | null]> = [
       ['play', safePlay], ['pause', () => audio.pause()],
       ['previoustrack', playPrevious], ['nexttrack', playNext],
@@ -258,7 +388,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         try { navigator.mediaSession.setActionHandler(action, null) } catch { /* unsupported action */ }
       }
     }
-  }, [currentSong, playNext, playPrevious, seek])
+  }, [currentSong, playNext, playPrevious, retryPlayback, seek])
 
   const setAutoplay = useCallback((enabled: boolean) => {
     autoplayRef.current = enabled
@@ -277,9 +407,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const isPlaying = useCallback((songId: string) => playingId === songId, [playingId])
 
   const value = useMemo(() => ({
-    playingId, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext,
+    playingId, playbackError, retryPlayback, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext,
     toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, setVolume, isPlaying,
-  }), [playingId, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext, toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, setVolume, isPlaying])
+  }), [playingId, playbackError, retryPlayback, currentSong, progress, currentTime, duration, autoplay, volume, hasPrevious, hasNext, toggle, seek, seekToProgress, setPlaylist, playPrevious, playNext, setAutoplay, setVolume, isPlaying])
 
   return <AudioPlayerContext.Provider value={value}>{children}</AudioPlayerContext.Provider>
 }
