@@ -72,6 +72,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current
     if (!audio) return
     const request = ++playRequestRef.current
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+    stallTimerRef.current = null
+    stalledAtRef.current = null
     pendingBackgroundSongRef.current = null
     setPlaybackError(null)
     setPlayingId(null)
@@ -110,6 +113,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     const request = ++playRequestRef.current
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current)
+    stallTimerRef.current = null
+    stalledAtRef.current = null
     pendingBackgroundSongRef.current = null
     setPlaybackError(null)
     audio.play().then(() => {
